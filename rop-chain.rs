@@ -1,7 +1,7 @@
 /*
  * This program demonstrates how to build and write out a ROP chain.
  * The code can be adapted to write to a socket, a file, or other stream.
- * Compile with `rrustc -C opt-level=3 -C debuginfo=0 rop-chain`
+ * Compile with `rustc -C opt-level=3 -C debuginfo=0 rop-chain`
  */
 
 use std::{io, mem};
