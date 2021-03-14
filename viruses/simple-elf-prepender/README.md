@@ -43,7 +43,7 @@ The result is one file that contains both the virus and the original ELF files.
 
 The virus as a whole needs to perform the following 3 tasks:
 
-1. Look for files to spread to and perform the above 4 infection steps
+1. Look for files to spread to and perform the above 3 infection steps
 2. Run its own `main` (do something a virus would do)
 3. Execute the original ELF file
 
