@@ -68,7 +68,7 @@ Note that these tasks are independent of each other: even if `spread_and_infect`
 
 The `spread_and_infect` function needs to know 2 things:
 - where to look for potential hosts
-- the virus code to inject if it does find a host
+- what code to inject if it does find a host
 
 We can pass this information as arguments:
 
@@ -82,7 +82,7 @@ fn main() {
     let my_name = &env::args().collect::<Vec<String>>()[0];
     if let Ok(my_code) = fs::read(my_name) {
         // Spread and infect neighboring ELFs
-        spread_and_infect(".", &virus);  
+        spread_and_infect(".", &my_code);  
     }
 }
 ```
@@ -108,7 +108,7 @@ fn spread_and_infect(dir: &str, virus: &[u8]) {
 }
 ```
 
-Now, we must decide how to find suitible hosts. The goal is to infect files that have an ELF signature, but do not have an infection mark. The infection mark is present in the virus binary (but not in the source code!) and so the virus will not reinfect itself.
+Now, we must decide how to find suitible hosts. The goal is to infect files that have an ELF signature, but do not have an infection mark. The infection mark is a series of bytes present in the virus binary (but not in the source code: `\\xff` != `0xff`) and so the virus can avoid (re)infecting itself.
 
 ```rust
 const ELF_MAGIC: &[u8; 4] = &[0x7f, 0x45, 0x4c, 0x46];
@@ -146,7 +146,7 @@ fn spread_and_infect(dir: &str, virus: &[u8]) {
 }
 ```
 
-The first time the virus is run, it's okay to prepend the entire virus binary onto the host, but from that point forward, `virus` will include not just the virus code, but its host's code as well. In Rust, it is tricky to determine exactly what portion of the code should be copied. This sample relies on a `VIRUS_SIZE` constant that needs to be adjusted everytime the binary is recompiled (more on this later). `main` is updated to only pass the virus code to `spread_and_infect`.
+The first time the virus is run, it's okay to prepend the entire virus binary onto the host, but from that point forward, `virus` will include not just the virus code, but its host's code as well. In Rust, it is tricky to determine exactly what portion of the code should be copied. This sample relies on a `VIRUS_SIZE` constant that needs to be adjusted everytime the binary is recompiled (more on this later); `main` is updated to restrict the code passed to `spread_and_infect` to only the actual virus code.
 
 ```rust
 const VIRUS_SIZE: usize = 0; // Placeholder value
@@ -160,18 +160,18 @@ fn main() {
 }
 ```
 
-With the `spread_and_infect` function completed, this virus can infect neighboring ELF files. An infected ELF file will then try to infect its own neighbors, and the spread continues. However, it will not yet execute the host binary; we will implement `execute_host` next.
+With the `spread_and_infect` function completed, this virus can now infect neighboring ELF files. An infected ELF file will then try to infect its own neighbors, and the spread continues. However, it will not yet execute the host binary; we will implement `execute_host` next.
 
 ## Executing the host binary
 
 There are two scenarios here. The original virus binary does not have a host, so this function should be skipped in that case. Otherwise, there is a host which can be extracted and ran. Note that the same will apply to `virus_main`.
 
-It's also important to consider the scenario where multiple infected binaries are run at the same time. For example, one infected program may be in a loop, when another infected program is run. For this reason, hosts should be extracted to unique paths - this sample makes use of the infected binary's name for this. 
+It's also important to consider the scenario where multiple infected binaries are run at the same time. For example, one infected program may be in a loop, when another infected program is run. To avoid conflicts when this happens, hosts should be extracted to their own unique paths - this sample makes use of the infected binary's name for this. 
 
 `execute_host` is passed the following arguments:
 - `name`: the name of the infected binary
 - `contents`: the ELF contents of the host
-- `args`: the CLI args to forward to the host minus the program name
+- `args`: the CLI args to forward to the host minus the (infected) program name
 
 ```rust
 /// Code that is executed when an infected file is ran
@@ -225,7 +225,7 @@ fn execute_host(name: &String, contents: &[u8], args: &[String]) {
 
 ## The virus payload
 
-The virus should work now, but it won't actually leave any traces to show that it ran. We can add code to `virus_main` to do just that. Remember in `main` we set `virus_main` to execute before `execute_host`! Here is a non-destructive payload that prints a cool header to stdout when an infected binary is ran.
+The virus should work now, but it won't tell us it's running. We can add code to `virus_main` to do just that. Remember in `main` we set `virus_main` to execute before `execute_host`! Here is a non-destructive payload that prints a cool header to stdout when an infected binary is ran.
 
 ```rust
 /// Code that is executed when an infected file is ran
