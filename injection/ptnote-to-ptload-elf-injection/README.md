@@ -27,9 +27,13 @@ We can append shellcode to the end of the binary and jump there at the start by 
 
 This example uses the Netwide ASseMbler (NASM) to prepare shellcode to inject, and so installing `nasm` is required to run this example. 
 
-Note: Rust binaries seem to need `rdx` to be 0 on entry or they will crash during cleanup.
+The `rbp`, `rsp`, and `rdx` registers must have correct values before the shellcode jumps back to the original entry point. Their uses are specified in the [AMD64 System V ABI](https://refspecs.linuxfoundation.org/elf/x86_64-abi-0.95.pdf) (under Process Initialization → Stack State). Since `rsp` and `rbp` are not touched by this shellcode, it only resets `rdx` to zero.
 
-The shellcode needs to be patched so it can jump back to the host's original entry point after finishing its tasks. To make patching easier, I designed this shellcode so it would run top-to-bottom and run off the end of the file, which allows us to patch it by simply appending a jump instruction. In x86_64, the `jmp` parameter cannot take a 64bit address to jump to, so we must pass through the `rax` register to make arbitrary jumps. The rust snippet below patches a `shellcode` byte vector to append a jump to `entry_point`:
+```asm
+xor rdx, rdx
+```
+
+The shellcode also needs to be patched so it can actually jump back to the host's original entry point after finishing its tasks. To make patching easier, I designed this shellcode so it would run top-to-bottom and run off the end of the file, which allows us to patch it by simply appending a jump instruction. In x86_64, the `jmp` parameter cannot take a 64bit address to jump to, so we must pass through the `rax` register to make arbitrary jumps. The rust snippet below patches a `shellcode` byte vector to append a jump to `entry_point`:
 
 ```rust
 fn patch_jump(shellcode: &mut Vec<u8>, entry_point: u64) {
@@ -139,4 +143,4 @@ $
 
 ## Conclusion
 
-This was a very fun project where I learned so much about ELF, parsing binary structures in Rust, and viruses in general. Thanks to netspooky, sblip, and others at tmp.out for teaching me, helping me debug and motivating me to do this project! <3
+This was a very fun project where I learned so much about ELF, parsing binary structures in Rust, and viruses in general. Thanks to netspooky, sblip, TMZ, and others at tmp.out for teaching me, helping me debug and motivating me to do this project! <3
