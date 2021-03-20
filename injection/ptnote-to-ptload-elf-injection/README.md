@@ -1,5 +1,7 @@
 # PT_NOTE to PT_LOAD ELF injector example
 
+日本語版はこちら: [README.ja.md](README.ja.md)
+
 I read about a technique on the [SymbolCrash blog](https://www.symbolcrash.com/2019/03/27/pt_note-to-pt_load-injection-in-elf/) for injecting shellcode into an ELF binary by converting a `PT_NOTE` in the Program Headers into a `PT_LOAD`. I thought this sounded interesting and I didn't know a lot about ELF, so I took it as an opportunity to learn many new things at once.
 
 For this project I created a small, very incomplete library I called [mental_elf](https://github.com/d3npa/mental-elf) which makes parsing and writing ELF metadata easier. I think the library code is very straight-forward and easy to understand, so I won't talk about it any more here. Let's focus on the infection technique instead :)
@@ -42,7 +44,7 @@ other_tasks:
 finish:
 ```
 
-With this design, patching is as easy as appending a jump instruction. In x86_64 however, `jmp` cannot take a 64bit operand - instead the destination is stored in rax and then a `jmp rax` is made. This rust snippet patches a `shellcode` byte vector to append a jump to `entry_point`:
+With this design, patching is as easy as appending a jump instruction. In x86_64 however, `jmp` cannot take a 64bit operand - instead the destination is stored in `rax` and then a `jmp rax` is made. This rust snippet patches a `shellcode` byte vector to append a jump to `entry_point`:
 
 ```rust
 fn patch_jump(shellcode: &mut Vec<u8>, entry_point: u64) {
