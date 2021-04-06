@@ -1,4 +1,15 @@
-This is a repo of small programs, proof of concepts, or templates written in Rust that relate in some way to hacking and/or CTF.
 
-I think Rust is really cool and I wanted to see what I could do with it. This repo is about sharing knowledge and experience gained from practice. All the code here is provided free and without warranty - I am not responsible to how you use or modify the code in this repo or apply the knowledge gained. Don't do something stupid.
++----------------------------------------------------------------------------+
+|                           ::: HACKING TRIX RUST :::                        |
++----------------------------------------------------------------------------+
+
+I think Rust is a really cool language and it has been a useful tool for me 
+to learn about how computers work. Here are some programs, snippets, and 
+writeups about some of the things I have learned. 
+
+Freedom of information, expression, and association are really important 
+values to me. I try to share information without bias that can be useful to
+different kinds of people. 
+
+Know your laws and don't be stupid.
 
