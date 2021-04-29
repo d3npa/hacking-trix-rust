@@ -22,7 +22,6 @@ Shellcode may be loaded into virtual memory via a `PT_LOAD` header. Inserting a 
 
 Here are two caveats I became aware of:
 
-- This simplistic technique will not work with Position Independent Executables (PIE). 
 - The Go language runtime actually expects a valid `PT_NOTE` section containing version information in order to run, so this technique cannot be used with Go binaries.
 
 Note: PIE can be disabled in cc with `-no-pie` or in rustc with `-C relocation-model=static`.
@@ -96,3 +95,7 @@ $
 ## Conclusion
 
 This was a very fun project where I learned so much about ELF, parsing binary structures in Rust, and viruses in general! Thanks to netspooky, sblip, TMZ, and others at tmp.out for teaching me, helping me debug and motivating me to do this project <3
+
+## Update 2021/04/29
+
+I originally stated this didn't work with PIE. I was mistaken - my shellcode just needed a few touchups to calculate the randomization offset and adjust the original entry point. I have added assembly instructions for this calculation in `files/jump_to_start.s` and updated `src/main.rs` to make use of them. 
