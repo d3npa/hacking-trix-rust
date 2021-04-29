@@ -13,5 +13,3 @@ main:
     mov dl, 25
     syscall
     xor rdx, rdx
-    ; mov rax, 0x0123456789abcdef
-    ; jmp rax

